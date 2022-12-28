@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/netlify/gotrue/models"
 	"github.com/netlify/gotrue/observability"
 	"github.com/netlify/gotrue/security"
 
@@ -177,4 +178,20 @@ func isIgnoreCaptchaRoute(req *http.Request) bool {
 		return true
 	}
 	return false
+}
+
+func (a *API) databaseCleanup(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+
+		db := a.db.WithContext(r.Context())
+		log := observability.GetLogEntry(r)
+
+		affectedRows, err := models.Cleanup(db)
+		if err != nil {
+			log.WithError(err).WithField("affected_rows", affectedRows).Warn("database cleanup failed")
+		} else if affectedRows > 0 {
+			log.WithField("affected_rows", affectedRows).Debug("cleaned up rows after request processing")
+		}
+	})
 }
